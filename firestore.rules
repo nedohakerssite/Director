@@ -1,0 +1,583 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Default Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -----------------------------------------------------------------------
+    // Global Primitives & Helpers
+    // -----------------------------------------------------------------------
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidHashKey(key) {
+      return key is string && key.size() == 64 && key.matches('^[a-f0-9]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && (
+          request.auth.token.email == 'olegfireman63@gmail.com'
+          || exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Validation Blueprints (Anti-Update-Gap)
+    // -----------------------------------------------------------------------
+    function isValidAdminRole(data) {
+      return data.keys().hasAll(['email', 'createdAt'])
+        && data.keys().hasOnly(['email', 'createdAt'])
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && data.createdAt is timestamp;
+    }
+
+    function isValidSiteConfig(data) {
+      return data.keys().hasAll([
+          'maintenanceEnabled',
+          'maintenanceTitle',
+          'maintenanceMessage',
+          'maintenanceUntil',
+          'snowEnabled',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'maintenanceEnabled',
+          'maintenanceTitle',
+          'maintenanceMessage',
+          'maintenanceUntil',
+          'snowEnabled',
+          'updatedAt'
+        ])
+        && data.maintenanceEnabled is bool
+        && data.maintenanceTitle is string && data.maintenanceTitle.size() >= 1 && data.maintenanceTitle.size() <= 140
+        && data.maintenanceMessage is string && data.maintenanceMessage.size() <= 600
+        && data.maintenanceUntil is string && data.maintenanceUntil.size() <= 80
+        && data.snowEnabled is bool
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll([
+          'fullName',
+          'username',
+          'groupName',
+          'pieceSymbol',
+          'totalPoints',
+          'eventsCount',
+          'active',
+          'aiEnabled',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'fullName',
+          'username',
+          'groupName',
+          'pieceSymbol',
+          'totalPoints',
+          'eventsCount',
+          'active',
+          'aiEnabled',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 100
+        && data.username is string && data.username.size() >= 2 && data.username.size() <= 40
+        && data.groupName is string && data.groupName.size() >= 1 && data.groupName.size() <= 60
+        && data.pieceSymbol is string && data.pieceSymbol.size() >= 1 && data.pieceSymbol.size() <= 4
+        && data.totalPoints is int && data.totalPoints >= -1000000 && data.totalPoints <= 1000000
+        && data.eventsCount is int && data.eventsCount >= 0 && data.eventsCount <= 100000
+        && data.active is bool
+        && data.aiEnabled is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudentPrivate(data) {
+      return data.keys().hasAll(['studentId', 'notes', 'authKey', 'updatedAt'])
+        && data.keys().hasOnly(['studentId', 'notes', 'authKey', 'updatedAt'])
+        && isValidId(data.studentId)
+        && data.notes is string && data.notes.size() <= 500
+        && isValidHashKey(data.authKey)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudentAuth(data) {
+      return data.keys().hasAll(['studentId', 'username', 'active', 'updatedAt'])
+        && data.keys().hasOnly(['studentId', 'username', 'active', 'updatedAt'])
+        && isValidId(data.studentId)
+        && data.username is string && data.username.size() >= 2 && data.username.size() <= 40
+        && data.active is bool
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudentProof(data) {
+      return data.keys().hasAll(['authKey', 'studentId', 'action', 'targetId', 'createdAt'])
+        && data.keys().hasOnly(['authKey', 'studentId', 'action', 'targetId', 'createdAt'])
+        && isValidHashKey(data.authKey)
+        && isValidId(data.studentId)
+        && data.action is string && data.action.size() <= 16 && data.action in ['idea', 'vote']
+        && isValidId(data.targetId)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidPointEvent(data) {
+      return data.keys().hasAll([
+          'studentId',
+          'studentName',
+          'groupName',
+          'delta',
+          'category',
+          'reason',
+          'eventDate',
+          'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'studentId',
+          'studentName',
+          'groupName',
+          'delta',
+          'category',
+          'reason',
+          'eventDate',
+          'createdAt'
+        ])
+        && isValidId(data.studentId)
+        && data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 100
+        && data.groupName is string && data.groupName.size() >= 1 && data.groupName.size() <= 60
+        && data.delta is int && data.delta >= -100000 && data.delta <= 100000 && data.delta != 0
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 60
+        && data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 200
+        && data.eventDate is string && data.eventDate.size() == 10 && data.eventDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.createdAt is timestamp;
+    }
+
+    function isValidNews(data) {
+      return data.keys().hasAll([
+          'title',
+          'body',
+          'fileName',
+          'fileSize',
+          'fileMime',
+          'hasFile',
+          'active',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'title',
+          'body',
+          'fileName',
+          'fileSize',
+          'fileMime',
+          'hasFile',
+          'active',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.title is string && data.title.size() >= 2 && data.title.size() <= 180
+        && data.body is string && data.body.size() <= 1500
+        && data.fileName is string && data.fileName.size() <= 180
+        && data.fileSize is int && data.fileSize >= 0 && data.fileSize <= 680000
+        && data.fileMime is string && data.fileMime.size() <= 120
+        && data.hasFile is bool
+        && data.active is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidNewsFile(data) {
+      return data.keys().hasAll(['newsId', 'fileName', 'fileMime', 'fileSize', 'dataBase64', 'createdAt'])
+        && data.keys().hasOnly(['newsId', 'fileName', 'fileMime', 'fileSize', 'dataBase64', 'createdAt'])
+        && isValidId(data.newsId)
+        && data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 180
+        && data.fileMime is string && data.fileMime.size() >= 1 && data.fileMime.size() <= 120
+        && data.fileSize is int && data.fileSize >= 1 && data.fileSize <= 680000
+        && data.dataBase64 is string && data.dataBase64.size() >= 1 && data.dataBase64.size() <= 920000
+        && data.createdAt is timestamp;
+    }
+
+    function isValidIdea(data) {
+      return data.keys().hasAll([
+          'studentId',
+          'authorName',
+          'subject',
+          'message',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'studentId',
+          'authorName',
+          'subject',
+          'message',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.studentId)
+        && data.authorName is string && data.authorName.size() >= 2 && data.authorName.size() <= 100
+        && data.subject is string && data.subject.size() >= 2 && data.subject.size() <= 160
+        && data.message is string && data.message.size() >= 5 && data.message.size() <= 2000
+        && data.status is string && data.status.size() <= 20 && data.status in ['new', 'accepted', 'in_progress', 'done']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidIdeaAdmin(data) {
+      return data.keys().hasAll(['ideaId', 'adminNote', 'updatedAt'])
+        && data.keys().hasOnly(['ideaId', 'adminNote', 'updatedAt'])
+        && isValidId(data.ideaId)
+        && data.adminNote is string && data.adminNote.size() <= 500
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidIdeaVote(data) {
+      return data.keys().hasAll(['ideaId', 'studentId', 'direction', 'createdAt'])
+        && data.keys().hasOnly(['ideaId', 'studentId', 'direction', 'createdAt'])
+        && isValidId(data.ideaId)
+        && isValidId(data.studentId)
+        && data.direction is int && data.direction in [1, -1]
+        && data.createdAt is timestamp;
+    }
+
+    function isValidSupportMessage(data) {
+      return data.keys().hasAll([
+          'authorName',
+          'authorContact',
+          'subject',
+          'message',
+          'status',
+          'adminNote',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'authorName',
+          'authorContact',
+          'subject',
+          'message',
+          'status',
+          'adminNote',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.authorName is string && data.authorName.size() >= 2 && data.authorName.size() <= 100
+        && data.authorContact is string && data.authorContact.size() <= 120
+        && data.subject is string && data.subject.size() >= 2 && data.subject.size() <= 160
+        && data.message is string && data.message.size() >= 5 && data.message.size() <= 2000
+        && data.status is string && data.status.size() <= 20 && data.status in ['new', 'in_progress', 'done']
+        && data.adminNote is string && data.adminNote.size() <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudentAiChat(data) {
+      return data.keys().hasAll(['studentId', 'messages', 'updatedAt'])
+        && data.keys().hasOnly(['studentId', 'messages', 'updatedAt'])
+        && isValidId(data.studentId)
+        && data.messages is list && data.messages.size() <= 40
+        && (data.messages.size() == 0 || data.messages[0] is map)
+        && data.updatedAt is timestamp;
+    }
+
+    // -----------------------------------------------------------------------
+    // 1. /admins/{uid}
+    // -----------------------------------------------------------------------
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(uid) && isValidAdminRole(incoming()) && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(uid);
+    }
+
+    // -----------------------------------------------------------------------
+    // 2. /site_config/{configId} (Maintenance Mode + Snowfall Effect)
+    // -----------------------------------------------------------------------
+    match /site_config/{configId} {
+      allow get: if isValidId(configId) && configId == 'main';
+      allow list: if false;
+      allow create: if isAdmin() && isValidId(configId) && configId == 'main'
+        && isValidSiteConfig(incoming())
+        && incoming().updatedAt == request.time;
+      allow update: if isValidSiteConfig(incoming()) && isAdmin() && isValidId(configId) && configId == 'main'
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'maintenanceEnabled',
+          'maintenanceTitle',
+          'maintenanceMessage',
+          'maintenanceUntil',
+          'snowEnabled',
+          'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    // -----------------------------------------------------------------------
+    // 3. /students/{studentId} (Public Leaderboard Profiles, zero PII)
+    // -----------------------------------------------------------------------
+    match /students/{studentId} {
+      allow get: if isValidId(studentId);
+      allow list: if isAdmin() || resource.data.active == true;
+      allow create: if isAdmin() && isValidId(studentId)
+        && isValidStudent(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidStudent(incoming()) && isAdmin() && isValidId(studentId)
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'fullName',
+          'username',
+          'groupName',
+          'pieceSymbol',
+          'totalPoints',
+          'eventsCount',
+          'active',
+          'aiEnabled',
+          'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(studentId);
+    }
+
+    // -----------------------------------------------------------------------
+    // 4. /students_private/{studentId} (Admin-only notes & auth key ref)
+    // -----------------------------------------------------------------------
+    match /students_private/{studentId} {
+      allow get: if isValidId(studentId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(studentId)
+        && isValidStudentPrivate(incoming())
+        && incoming().studentId == studentId
+        && incoming().updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/students/$(studentId));
+      allow update: if isValidStudentPrivate(incoming()) && isAdmin() && isValidId(studentId)
+        && incoming().studentId == existing().studentId
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['notes', 'authKey', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(studentId);
+    }
+
+    // -----------------------------------------------------------------------
+    // 5. /student_auth/{loginKey} (Hash-keyed non-Google login lookup)
+    // -----------------------------------------------------------------------
+    match /student_auth/{loginKey} {
+      allow get: if isValidHashKey(loginKey);
+      allow list: if false;
+      allow create: if isAdmin() && isValidHashKey(loginKey)
+        && isValidStudentAuth(incoming())
+        && incoming().updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/students/$(incoming().studentId));
+      allow update: if isValidStudentAuth(incoming()) && isAdmin() && isValidHashKey(loginKey)
+        && incoming().studentId == existing().studentId
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['username', 'active', 'updatedAt']);
+      allow delete: if isAdmin() && isValidHashKey(loginKey);
+    }
+
+    // -----------------------------------------------------------------------
+    // 6. /student_proofs/{proofId} (Write-only atomic proof for student actions)
+    // -----------------------------------------------------------------------
+    match /student_proofs/{proofId} {
+      allow get: if isValidId(proofId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(proofId)
+        && isValidStudentProof(incoming())
+        && incoming().createdAt == request.time
+        && (
+          (incoming().action == 'idea' && proofId == 'idea_' + incoming().studentId && incoming().targetId == incoming().studentId)
+          || (incoming().action == 'vote' && proofId == 'vote_' + incoming().targetId)
+        )
+        && exists(/databases/$(database)/documents/student_auth/$(incoming().authKey))
+        && get(/databases/$(database)/documents/student_auth/$(incoming().authKey)).data.studentId == incoming().studentId
+        && get(/databases/$(database)/documents/student_auth/$(incoming().authKey)).data.active == true;
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(proofId);
+    }
+
+    // -----------------------------------------------------------------------
+    // 7. /point_events/{eventId} (Club points ledger)
+    // -----------------------------------------------------------------------
+    match /point_events/{eventId} {
+      allow get: if isValidId(eventId);
+      allow list: if isAdmin() || resource.data.delta != 0;
+      allow create: if isAdmin() && isValidId(eventId)
+        && isValidPointEvent(incoming())
+        && incoming().createdAt == request.time
+        && existsAfter(/databases/$(database)/documents/students/$(incoming().studentId));
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(eventId);
+    }
+
+    // -----------------------------------------------------------------------
+    // 8. /news/{newsId} (Running news marquee)
+    // -----------------------------------------------------------------------
+    match /news/{newsId} {
+      allow get: if isValidId(newsId) && (isAdmin() || resource.data.active == true);
+      allow list: if isAdmin() || resource.data.active == true;
+      allow create: if isAdmin() && isValidId(newsId)
+        && isValidNews(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidNews(incoming()) && isAdmin() && isValidId(newsId)
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'body', 'active', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(newsId);
+    }
+
+    // -----------------------------------------------------------------------
+    // 9. /news_files/{newsId} (Downloadable news file attachments)
+    // -----------------------------------------------------------------------
+    match /news_files/{newsId} {
+      allow get: if isValidId(newsId) && (
+        isAdmin()
+        || (
+          exists(/databases/$(database)/documents/news/$(newsId))
+          && get(/databases/$(database)/documents/news/$(newsId)).data.active == true
+        )
+      );
+      allow list: if false;
+      allow create: if isAdmin() && isValidId(newsId)
+        && isValidNewsFile(incoming())
+        && incoming().newsId == newsId
+        && incoming().createdAt == request.time
+        && existsAfter(/databases/$(database)/documents/news/$(newsId));
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(newsId);
+    }
+
+    // -----------------------------------------------------------------------
+    // 10. /ideas/{ideaId} (Public /ides board: 1 student = 1 idea)
+    // -----------------------------------------------------------------------
+    match /ideas/{ideaId} {
+      allow get: if isValidId(ideaId);
+      allow list: if isAdmin() || resource.data.status in ['new', 'accepted', 'in_progress', 'done'];
+      allow create: if isValidId(ideaId)
+        && isValidIdea(incoming())
+        && incoming().studentId == ideaId
+        && incoming().status == 'new'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/student_proofs/$('idea_' + ideaId))
+        && getAfter(/databases/$(database)/documents/student_proofs/$('idea_' + ideaId)).data.studentId == ideaId
+        && getAfter(/databases/$(database)/documents/student_proofs/$('idea_' + ideaId)).data.action == 'idea';
+      allow update: if isValidIdea(incoming()) && isAdmin() && isValidId(ideaId)
+        && incoming().studentId == existing().studentId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(ideaId);
+    }
+
+    // -----------------------------------------------------------------------
+    // 11. /ideas_admin/{ideaId} (Admin-only notes for ideas)
+    // -----------------------------------------------------------------------
+    match /ideas_admin/{ideaId} {
+      allow get: if isValidId(ideaId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(ideaId)
+        && isValidIdeaAdmin(incoming())
+        && incoming().ideaId == ideaId
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/ideas/$(ideaId));
+      allow update: if isValidIdeaAdmin(incoming()) && isAdmin() && isValidId(ideaId)
+        && incoming().ideaId == existing().ideaId
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['adminNote', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(ideaId);
+    }
+
+    // -----------------------------------------------------------------------
+    // 12. /idea_votes/{voteId} (1 student = 1 vote per idea across all devices)
+    // -----------------------------------------------------------------------
+    match /idea_votes/{voteId} {
+      allow get: if isValidId(voteId);
+      allow list: if isAdmin() || resource.data.direction in [1, -1];
+      allow create: if isValidId(voteId)
+        && isValidIdeaVote(incoming())
+        && voteId == incoming().ideaId + '_' + incoming().studentId
+        && incoming().createdAt == request.time
+        && exists(/databases/$(database)/documents/ideas/$(incoming().ideaId))
+        && existsAfter(/databases/$(database)/documents/student_proofs/$('vote_' + voteId))
+        && getAfter(/databases/$(database)/documents/student_proofs/$('vote_' + voteId)).data.studentId == incoming().studentId
+        && getAfter(/databases/$(database)/documents/student_proofs/$('vote_' + voteId)).data.targetId == voteId
+        && getAfter(/databases/$(database)/documents/student_proofs/$('vote_' + voteId)).data.action == 'vote';
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(voteId);
+    }
+
+    // -----------------------------------------------------------------------
+    // 13. /support_messages/{msgId} (/Layf1x technical support tickets)
+    // -----------------------------------------------------------------------
+    match /support_messages/{msgId} {
+      allow get: if isValidId(msgId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(msgId)
+        && isValidSupportMessage(incoming())
+        && incoming().status == 'new'
+        && incoming().adminNote == ''
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidSupportMessage(incoming()) && isAdmin() && isValidId(msgId)
+        && incoming().createdAt == existing().createdAt
+        && incoming().authorName == existing().authorName
+        && incoming().authorContact == existing().authorContact
+        && incoming().subject == existing().subject
+        && incoming().message == existing().message
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNote', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(msgId);
+    }
+
+    // -----------------------------------------------------------------------
+    // 14. /student_ai_chats/{authKey} (Synced per-student AI chat history)
+    // -----------------------------------------------------------------------
+    match /student_ai_chats/{authKey} {
+      allow get: if isValidHashKey(authKey)
+        && exists(/databases/$(database)/documents/student_auth/$(authKey))
+        && get(/databases/$(database)/documents/student_auth/$(authKey)).data.active == true;
+      allow list: if false;
+      allow create: if isValidHashKey(authKey)
+        && isValidStudentAiChat(incoming())
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/student_auth/$(authKey))
+        && get(/databases/$(database)/documents/student_auth/$(authKey)).data.studentId == incoming().studentId
+        && get(/databases/$(database)/documents/student_auth/$(authKey)).data.active == true;
+      allow update: if isValidStudentAiChat(incoming()) && isValidHashKey(authKey)
+        && incoming().studentId == existing().studentId
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['messages', 'updatedAt'])
+        && exists(/databases/$(database)/documents/student_auth/$(authKey))
+        && get(/databases/$(database)/documents/student_auth/$(authKey)).data.studentId == incoming().studentId
+        && get(/databases/$(database)/documents/student_auth/$(authKey)).data.active == true;
+      allow delete: if isValidHashKey(authKey) && (
+        isAdmin()
+        || (
+          exists(/databases/$(database)/documents/student_auth/$(authKey))
+          && get(/databases/$(database)/documents/student_auth/$(authKey)).data.active == true
+        )
+      );
+    }
+  }
+}

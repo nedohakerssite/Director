@@ -1,0 +1,626 @@
+{
+  "entities": {
+    "AdminRole": {
+      "title": "AdminRole",
+      "description": "Authorized administrator account for the Layf1x-TOP chess club panel.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160,
+          "description": "Verified administrator email address."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when admin access was granted."
+        }
+      },
+      "required": ["email", "createdAt"]
+    },
+    "SiteConfig": {
+      "title": "SiteConfig",
+      "description": "Global site settings including maintenance mode and snowfall effect toggle.",
+      "type": "object",
+      "properties": {
+        "maintenanceEnabled": {
+          "type": "boolean",
+          "description": "Blocks all public routes except /admin when true."
+        },
+        "maintenanceTitle": {
+          "type": "string",
+          "maxLength": 140,
+          "description": "Headline displayed on the maintenance screen."
+        },
+        "maintenanceMessage": {
+          "type": "string",
+          "maxLength": 600,
+          "description": "Detailed message displayed on the maintenance screen."
+        },
+        "maintenanceUntil": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Optional estimated return time text."
+        },
+        "snowEnabled": {
+          "type": "boolean",
+          "description": "Enables or disables the animated snowfall overlay across the site."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last configuration update."
+        }
+      },
+      "required": [
+        "maintenanceEnabled",
+        "maintenanceTitle",
+        "maintenanceMessage",
+        "maintenanceUntil",
+        "snowEnabled",
+        "updatedAt"
+      ]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Public student profile displayed in the Layf1x-TOP chess leaderboard.",
+      "type": "object",
+      "properties": {
+        "fullName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100,
+          "description": "Student display name."
+        },
+        "username": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40,
+          "description": "Student login handle."
+        },
+        "groupName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Training group name."
+        },
+        "pieceSymbol": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4,
+          "description": "Chess piece unicode symbol."
+        },
+        "totalPoints": {
+          "type": "integer",
+          "description": "Cached total club points."
+        },
+        "eventsCount": {
+          "type": "integer",
+          "description": "Cached count of point events."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether the student account is active."
+        },
+        "aiEnabled": {
+          "type": "boolean",
+          "description": "Coach-controlled access to the Chess AI Helper tab."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when account was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when account was last updated."
+        }
+      },
+      "required": [
+        "fullName",
+        "username",
+        "groupName",
+        "pieceSymbol",
+        "totalPoints",
+        "eventsCount",
+        "active",
+        "aiEnabled",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StudentPrivate": {
+      "title": "StudentPrivate",
+      "description": "Admin-only private trainer notes and credential key reference for a student.",
+      "type": "object",
+      "properties": {
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Referenced student document ID."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Private coach notes."
+        },
+        "authKey": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "description": "Current SHA-256 credential lookup key in student_auth."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last private update."
+        }
+      },
+      "required": ["studentId", "notes", "authKey", "updatedAt"]
+    },
+    "StudentAuth": {
+      "title": "StudentAuth",
+      "description": "Hash-keyed non-Google login lookup mapping SHA-256(username:password) to studentId.",
+      "type": "object",
+      "properties": {
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Associated student document ID."
+        },
+        "username": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40,
+          "description": "Normalized lowercase username."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Mirrors whether the student account is enabled."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of credential creation or update."
+        }
+      },
+      "required": ["studentId", "username", "active", "updatedAt"]
+    },
+    "StudentProof": {
+      "title": "StudentProof",
+      "description": "Write-only atomic proof validating student credentials during idea creation or voting.",
+      "type": "object",
+      "properties": {
+        "authKey": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "description": "Student SHA-256 credential key verified against student_auth."
+        },
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Verified student ID."
+        },
+        "action": {
+          "type": "string",
+          "enum": ["idea", "vote"],
+          "description": "Action being authorized."
+        },
+        "targetId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Target idea or vote document ID."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the action."
+        }
+      },
+      "required": ["authKey", "studentId", "action", "targetId", "createdAt"]
+    },
+    "PointEvent": {
+      "title": "PointEvent",
+      "description": "Immutable club points award or deduction entry.",
+      "type": "object",
+      "properties": {
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Student document ID."
+        },
+        "studentName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Snapshot of student full name."
+        },
+        "groupName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Snapshot of student group."
+        },
+        "delta": {
+          "type": "integer",
+          "description": "Points delta (positive or negative)."
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Point category."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Reason for point change."
+        },
+        "eventDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "ISO date YYYY-MM-DD."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of recording."
+        }
+      },
+      "required": [
+        "studentId",
+        "studentName",
+        "groupName",
+        "delta",
+        "category",
+        "reason",
+        "eventDate",
+        "createdAt"
+      ]
+    },
+    "NewsItem": {
+      "title": "NewsItem",
+      "description": "Running news ticker announcement with optional attachment metadata.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 180,
+          "description": "Ticker headline."
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 1500,
+          "description": "Detailed news body."
+        },
+        "fileName": {
+          "type": "string",
+          "maxLength": 180,
+          "description": "Attached filename or empty string."
+        },
+        "fileSize": {
+          "type": "integer",
+          "description": "Attached file size in bytes."
+        },
+        "fileMime": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Attached file MIME type."
+        },
+        "hasFile": {
+          "type": "boolean",
+          "description": "Whether a matching news_files document exists."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether visible in the public running ticker."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last modification."
+        }
+      },
+      "required": [
+        "title",
+        "body",
+        "fileName",
+        "fileSize",
+        "fileMime",
+        "hasFile",
+        "active",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "NewsFile": {
+      "title": "NewsFile",
+      "description": "Base64 file payload stored separately for downloadable news attachments.",
+      "type": "object",
+      "properties": {
+        "newsId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Referenced news document ID."
+        },
+        "fileName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 180,
+          "description": "Original filename."
+        },
+        "fileMime": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "File MIME type."
+        },
+        "fileSize": {
+          "type": "integer",
+          "description": "Raw file size in bytes."
+        },
+        "dataBase64": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 920000,
+          "description": "Base64-encoded file payload."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of upload."
+        }
+      },
+      "required": ["newsId", "fileName", "fileMime", "fileSize", "dataBase64", "createdAt"]
+    },
+    "Idea": {
+      "title": "Idea",
+      "description": "Public student feature suggestion on /ides (1 idea per student).",
+      "type": "object",
+      "properties": {
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Author student ID (also used as document ID to enforce 1 student = 1 idea)."
+        },
+        "authorName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100,
+          "description": "Display name of the student author."
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 160,
+          "description": "Short idea title."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 2000,
+          "description": "Detailed idea description."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["new", "accepted", "in_progress", "done"],
+          "description": "Moderation and implementation status."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of idea creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": ["studentId", "authorName", "subject", "message", "status", "createdAt", "updatedAt"]
+    },
+    "IdeaAdmin": {
+      "title": "IdeaAdmin",
+      "description": "Admin-only private metadata and coach note for an idea.",
+      "type": "object",
+      "properties": {
+        "ideaId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Referenced idea ID."
+        },
+        "adminNote": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Internal admin note."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of note update."
+        }
+      },
+      "required": ["ideaId", "adminNote", "updatedAt"]
+    },
+    "IdeaVote": {
+      "title": "IdeaVote",
+      "description": "Single vote (up or down) cast by a verified student on an idea (1 student = 1 vote per idea).",
+      "type": "object",
+      "properties": {
+        "ideaId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Target idea document ID."
+        },
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Voting student document ID."
+        },
+        "direction": {
+          "type": "integer",
+          "enum": [1, -1],
+          "description": "Vote direction: 1 for upvote, -1 for downvote."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of vote."
+        }
+      },
+      "required": ["ideaId", "studentId", "direction", "createdAt"]
+    },
+    "SupportMessage": {
+      "title": "SupportMessage",
+      "description": "Technical support ticket submitted on /Layf1x (readable only by admin).",
+      "type": "object",
+      "properties": {
+        "authorName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100,
+          "description": "Sender name."
+        },
+        "authorContact": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Optional sender contact or login."
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 160,
+          "description": "Support topic."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 2000,
+          "description": "Issue description."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["new", "in_progress", "done"],
+          "description": "Ticket status."
+        },
+        "adminNote": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Internal admin note."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of ticket creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "authorName",
+        "authorContact",
+        "subject",
+        "message",
+        "status",
+        "adminNote",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StudentAiChat": {
+      "title": "StudentAiChat",
+      "description": "Per-student AI chess helper conversation keyed by student auth hash.",
+      "type": "object",
+      "properties": {
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Owner student ID."
+        },
+        "messages": {
+          "type": "array",
+          "description": "Bounded list of recent chat messages (max 40)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last chat update."
+        }
+      },
+      "required": ["studentId", "messages", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminRole" },
+      "description": "Admin role documents for /admin access."
+    },
+    "/site_config/{configId}": {
+      "schema": { "$ref": "#/entities/SiteConfig" },
+      "description": "Global site settings document (main) controlling maintenance mode and snowfall."
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Public student leaderboard profiles."
+    },
+    "/students_private/{studentId}": {
+      "schema": { "$ref": "#/entities/StudentPrivate" },
+      "description": "Admin-only private trainer notes and credential key references."
+    },
+    "/student_auth/{loginKey}": {
+      "schema": { "$ref": "#/entities/StudentAuth" },
+      "description": "SHA-256 hash-keyed credential lookup for non-Google student login."
+    },
+    "/student_proofs/{proofId}": {
+      "schema": { "$ref": "#/entities/StudentProof" },
+      "description": "Write-only atomic student identity proofs for ideas and votes."
+    },
+    "/point_events/{eventId}": {
+      "schema": { "$ref": "#/entities/PointEvent" },
+      "description": "Club points journal entries."
+    },
+    "/news/{newsId}": {
+      "schema": { "$ref": "#/entities/NewsItem" },
+      "description": "Running news marquee announcements."
+    },
+    "/news_files/{newsId}": {
+      "schema": { "$ref": "#/entities/NewsFile" },
+      "description": "Downloadable file attachments linked to news items."
+    },
+    "/ideas/{ideaId}": {
+      "schema": { "$ref": "#/entities/Idea" },
+      "description": "Public student ideas board (/ides), keyed by studentId (1 idea per student)."
+    },
+    "/ideas_admin/{ideaId}": {
+      "schema": { "$ref": "#/entities/IdeaAdmin" },
+      "description": "Admin-only private notes for ideas."
+    },
+    "/idea_votes/{voteId}": {
+      "schema": { "$ref": "#/entities/IdeaVote" },
+      "description": "Votes on ideas keyed by {ideaId}_{studentId} (1 student = 1 vote per idea)."
+    },
+    "/support_messages/{msgId}": {
+      "schema": { "$ref": "#/entities/SupportMessage" },
+      "description": "Technical support tickets submitted on /Layf1x."
+    },
+    "/student_ai_chats/{authKey}": {
+      "schema": { "$ref": "#/entities/StudentAiChat" },
+      "description": "Synced AI chess helper history keyed by student auth hash."
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Шахматный клуб «Этюд»",
+  "description": "Сайт для учёта баллов учеников по шахматам и админ-панель с управлением аккаунтами и учётом доходов и расходов по дням и личным папкам.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
